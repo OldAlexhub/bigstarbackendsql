@@ -1,0 +1,24 @@
+import mongoose from "../db/sqlMongoose.js";
+
+const safetyEntrySchema = new mongoose.Schema(
+  {
+    division: { type: mongoose.Schema.Types.ObjectId, ref: "Division", required: true },
+    month: { type: String, required: true },
+    miles: { type: Number, required: true, min: 0 },
+    preventableAccidents: { type: Number, required: true, min: 0 },
+    nonPreventableAccidents: { type: Number, required: true, min: 0 },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  },
+  { timestamps: true }
+);
+
+safetyEntrySchema.index(
+  { division: 1, month: 1 },
+  { unique: true, name: "uniq_safety_division_month" }
+);
+safetyEntrySchema.index({ division: 1, month: -1 });
+
+const SafetyEntry = mongoose.model("SafetyEntry", safetyEntrySchema);
+
+export default SafetyEntry;
