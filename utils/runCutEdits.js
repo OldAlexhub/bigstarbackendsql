@@ -37,6 +37,9 @@ const vehicleConflictMessage = (conflict) =>
 
 export const normalizeRunCutEdit = async (runCut, rawBody) => {
   const body = { ...rawBody };
+  if (body.pulloutAddress !== undefined) {
+    body.pulloutAddress = String(body.pulloutAddress).trim();
+  }
   const operatorWasUpdated = body.operatorId !== undefined || body.operatorName !== undefined;
   let operatorDoc;
   if (operatorWasUpdated) {
@@ -126,7 +129,7 @@ export const validateRunCutAssignment = async (runCut) => {
 
 // Shared by direct Master Run Cut edits, same-day Permanent OSRs, and the
 // scheduler that activates future Permanent OSRs on their effective date.
-export const applyRunCutEdit = async (runCut, rawBody, userId) => {
+export const applyRunCutEdit = async (runCut, rawBody, userId, { replaceDayOverrides = false } = {}) => {
   const { body, operatorDoc, vehicleDoc } = await normalizeRunCutEdit(runCut, rawBody);
   const changes = diffRunCutEdit(runCut, body);
   for (const change of changes) runCut[change.field] = change.newValue;
@@ -146,7 +149,9 @@ export const applyRunCutEdit = async (runCut, rawBody, userId) => {
   runCut.updatedBy = userId;
 
   await runCut.save();
-  await projectAssignment(runCut, userId);
+  await projectAssignment(runCut, userId, {
+    replaceOverrides: replaceDayOverrides ? changes.map((change) => change.field) : [],
+  });
 
   if (changes.length) {
     await ChangeLog.insertMany(

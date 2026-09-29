@@ -13,6 +13,18 @@ export const PROJECTION_HORIZON_DAYS = 7;
 
 const dayOfWeekFor = (date) => DAYS_OF_WEEK[new Date(date).getUTCDay()];
 
+const RUN_CUT_FIELD_TO_OVERRIDE = {
+  operator: "operator",
+  vehicle: "vehicle",
+  pulloutAddress: "pulloutAddress",
+  startTime: "startTime",
+  endTime: "endTime",
+  status: "status",
+  clientNotes: "clientNotes",
+  disruptionType: "disruption",
+  disruptionNotes: "disruption",
+};
+
 // Projects a live RunCut (the single, always-current assignment for a route)
 // forward into dated RunCutDay records — the shape Tracker/KPI/Issue Log
 // already read. Runs from today through the horizon so a change is visible
@@ -26,7 +38,11 @@ const dayOfWeekFor = (date) => DAYS_OF_WEEK[new Date(date).getUTCDay()];
 // the persistent assignment's value. A date only ever carries its own
 // override, so the next scheduled day (a different, never-overridden
 // document) naturally reverts to the plan — no explicit "clear" needed.
-export const projectAssignment = async (runCut, userId, { horizonDays = PROJECTION_HORIZON_DAYS } = {}) => {
+export const projectAssignment = async (
+  runCut,
+  userId,
+  { horizonDays = PROJECTION_HORIZON_DAYS, replaceOverrides = [] } = {}
+) => {
   const divisionDoc = await Division.findById(runCut.division);
   if (!divisionDoc || divisionDoc.active === false) return;
   const thresholdHistory = await loadThresholdHistory(divisionDoc._id);
@@ -63,6 +79,25 @@ export const projectAssignment = async (runCut, userId, { horizonDays = PROJECTI
   }
 
   if (!keepDates.length) return;
+
+  // A Permanent OSR is the new standing assignment from its effective day,
+  // so an older day-specific exception must not keep masking the fields the
+  // permanent request just changed. Preserve every unrelated live-day
+  // override (for example, a status exception when only the address changed).
+  const overrideFields = [
+    ...new Set(replaceOverrides.map((field) => RUN_CUT_FIELD_TO_OVERRIDE[field]).filter(Boolean)),
+  ];
+  if (overrideFields.length) {
+    await RunCutDay.updateMany(
+      {
+        division: runCut.division,
+        route: runCut.route,
+        date: { $in: keepDates },
+        isExtra: { $ne: true },
+      },
+      { $set: Object.fromEntries(overrideFields.map((field) => [`overrides.${field}`, false])) }
+    );
+  }
 
   await RunCutDay.bulkWrite(
     keepDates.map((date) => {

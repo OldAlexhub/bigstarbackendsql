@@ -269,10 +269,23 @@ export const updateRunCutPermanentOsr = async (req, res) => {
       delete body.startDate;
 
       let changes;
-      let operatorDoc;
-      let vehicleDoc;
+      const normalized = await normalizeRunCutEdit(runCut, body);
+      const requestedChanges = diffRunCutEdit(runCut, normalized.body);
+      const substantiveChanges = requestedChanges.filter(
+        (change) => !["disruptionType", "disruptionNotes"].includes(change.field)
+      );
+      if (!substantiveChanges.length) {
+        throw httpError(
+          400,
+          "No Master Run Cut fields changed. Enter a new driver, vehicle, pullout address, schedule, status, days, or client notes."
+        );
+      }
+      const operatorDoc = normalized.operatorDoc;
+      const vehicleDoc = normalized.vehicleDoc;
       if (effectiveDate.getTime() === today.getTime()) {
-        ({ changes, operatorDoc, vehicleDoc } = await applyRunCutEdit(runCut, body, req.user._id));
+        ({ changes } = await applyRunCutEdit(runCut, normalized.body, req.user._id, {
+          replaceDayOverrides: true,
+        }));
         applied = true;
       } else {
         const existing = await PermanentOsrChange.findOne({
@@ -283,10 +296,7 @@ export const updateRunCutPermanentOsr = async (req, res) => {
           throw httpError(409, "This route already has a future permanent OSR scheduled.");
         }
 
-        const normalized = await normalizeRunCutEdit(runCut, body);
-        operatorDoc = normalized.operatorDoc;
-        vehicleDoc = normalized.vehicleDoc;
-        changes = diffRunCutEdit(runCut, normalized.body);
+        changes = requestedChanges;
         await validateRunCutAssignment(runCutPreview(runCut, normalized.body));
 
         const editableFields = RUN_CUT_EDITABLE_FIELDS.filter((field) => normalized.body[field] !== undefined);

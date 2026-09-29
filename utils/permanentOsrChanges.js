@@ -46,7 +46,9 @@ export const applyPermanentOsrChange = async (changeId) => {
       throw httpError(409, "The Master Run Cut for this permanent OSR is no longer available.");
     }
 
-    await applyRunCutEdit(runCut, scheduledPermanentOsrBody(change), change.requestedBy);
+    await applyRunCutEdit(runCut, scheduledPermanentOsrBody(change), change.requestedBy, {
+      replaceDayOverrides: true,
+    });
     change.applicationStatus = "applied";
     change.appliedAt = new Date();
     change.applicationError = "";
