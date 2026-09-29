@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import mongoose from "./db/sqlMongoose.js";
+import { fileURLToPath } from "node:url";
 import connectTodb from "./db/connectTodb.js";
 import { assertTransactionSupport } from "./db/transactionSupport.js";
 import { validateEnvironment } from "./config/environment.js";
@@ -59,6 +60,7 @@ try {
   process.exit(1);
 }
 const app = express();
+const publicDir = fileURLToPath(new URL("./public", import.meta.url));
 
 if (config.trustProxy !== undefined) app.set("trust proxy", config.trustProxy);
 
@@ -73,6 +75,7 @@ app.use((_req, res, next) => {
   res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
   next();
 });
+app.use(express.static(publicDir, { index: "health.html" }));
 app.use(createRequestOriginProtection(config));
 app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
