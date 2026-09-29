@@ -114,9 +114,9 @@ test("revoked or expired API Bearer tokens are rejected", async () => {
   assert.deepEqual(res.body, { message: "Invalid or expired API access token." });
 });
 
-test("an issued token stops working if its service user becomes a global administrator", async () => {
+test("an issued token stops working if its service user becomes ELT", async () => {
   const originalFindOne = ApiAccessToken.findOne;
-  const token = { user: { active: true, role: "Super Admin" }, save: async () => {} };
+  const token = { user: { active: true, role: "ELT" }, save: async () => {} };
   ApiAccessToken.findOne = () => ({ populate: async () => token });
   const res = responseRecorder();
 
@@ -131,4 +131,24 @@ test("an issued token stops working if its service user becomes a global adminis
   }
 
   assert.equal(res.statusCode, 401);
+});
+
+test("a Super Admin API token receives full-site read access", async () => {
+  const originalFindOne = ApiAccessToken.findOne;
+  const user = { active: true, role: "Super Admin" };
+  const token = { user, save: async () => {} };
+  ApiAccessToken.findOne = () => ({ populate: async () => token });
+  const req = { method: "GET", headers: { authorization: `Bearer ${ACCESS_TOKEN}` }, cookies: {} };
+  const res = responseRecorder();
+  let nextCalled = false;
+
+  try {
+    await protect(req, res, () => { nextCalled = true; });
+  } finally {
+    ApiAccessToken.findOne = originalFindOne;
+  }
+
+  assert.equal(nextCalled, true);
+  assert.equal(req.user, user);
+  assert.equal(req.authType, "api_access_token");
 });

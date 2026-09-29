@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import ApiAccessToken from "../models/ApiAccessToken.js";
 import User from "../models/User.js";
 import { hashApiAccessToken, isApiAccessToken } from "../utils/apiAccessTokens.js";
-import { isGlobalAdmin } from "../utils/roles.js";
+import { ELT_ROLE } from "../utils/roles.js";
 
 export const getRequestToken = (req) => {
   return req.cookies?.token || null;
@@ -26,7 +26,7 @@ const authenticateApiAccessToken = async (req, res, accessToken) => {
     expiresAt: { $gt: new Date() },
   }).populate("user");
   const user = token?.user;
-  if (!user || user.active === false || isGlobalAdmin(user)) {
+  if (!user || user.active === false || user.role === ELT_ROLE) {
     return res.status(401).json({ message: "Invalid or expired API access token." });
   }
 

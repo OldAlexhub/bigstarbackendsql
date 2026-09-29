@@ -6,7 +6,7 @@ import {
   generateApiAccessToken,
   hashApiAccessToken,
 } from "../utils/apiAccessTokens.js";
-import { isGlobalAdmin } from "../utils/roles.js";
+import { ELT_ROLE, isSuperAdmin } from "../utils/roles.js";
 
 const tokenJson = (token) => ({
   id: token._id,
@@ -52,10 +52,10 @@ export const createApiAccessToken = async (req, res) => {
   if (!user || user.active === false) {
     return res.status(400).json({ message: "Choose an active service user." });
   }
-  if (isGlobalAdmin(user)) {
-    return res.status(400).json({ message: "API tokens cannot use an unrestricted Super Admin or ELT account." });
+  if (user.role === ELT_ROLE) {
+    return res.status(400).json({ message: "ELT accounts cannot be used for API tokens." });
   }
-  if (!user.pageAccessConfigured || !user.pageAccess?.length) {
+  if (!isSuperAdmin(user) && (!user.pageAccessConfigured || !user.pageAccess?.length)) {
     return res.status(400).json({
       message: "The service user must have explicit read-only page permissions before a token can be issued.",
     });

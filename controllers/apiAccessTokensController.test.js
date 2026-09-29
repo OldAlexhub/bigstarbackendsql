@@ -60,28 +60,62 @@ test("issuing an API token stores only its hash and returns plaintext once", asy
   assert.equal(res.body.token.user.username, "warehouse.reader");
 });
 
-test("unrestricted global identities cannot be used as API service users", async () => {
+test("ELT identities cannot be used as API service users", async () => {
   const originalFindById = User.findById;
   const userId = new mongoose.Types.ObjectId();
 
   try {
-    for (const role of ["Super Admin", "ELT"]) {
-      User.findById = async () => ({
-        _id: userId,
-        active: true,
-        role,
-        pageAccessConfigured: true,
-        pageAccess: ["dashboard"],
-      });
-      const res = responseRecorder();
-      await createApiAccessToken({
-        body: { name: "Unsafe token", userId: userId.toString(), expiresInDays: 90 },
-        user: { _id: new mongoose.Types.ObjectId() },
-      }, res);
-      assert.equal(res.statusCode, 400);
-      assert.match(res.body.message, /cannot use an unrestricted Super Admin or ELT account/i);
-    }
+    User.findById = async () => ({
+      _id: userId,
+      active: true,
+      role: "ELT",
+      pageAccessConfigured: true,
+      pageAccess: ["dashboard"],
+    });
+    const res = responseRecorder();
+    await createApiAccessToken({
+      body: { name: "Unsafe token", userId: userId.toString(), expiresInDays: 90 },
+      user: { _id: new mongoose.Types.ObjectId() },
+    }, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /ELT accounts cannot be used/i);
   } finally {
     User.findById = originalFindById;
   }
+});
+
+test("Super Admin can issue a read-only token with full-site access", async () => {
+  const originalFindById = User.findById;
+  const originalCreate = ApiAccessToken.create;
+  const userId = new mongoose.Types.ObjectId();
+  User.findById = async () => ({
+    _id: userId,
+    name: "System Administrator",
+    username: "super.admin",
+    active: true,
+    role: "Super Admin",
+    pageAccessConfigured: false,
+    pageAccess: [],
+  });
+  ApiAccessToken.create = async (payload) => ({
+    _id: new mongoose.Types.ObjectId(),
+    ...payload,
+    createdAt: new Date(),
+    lastUsedAt: null,
+    revokedAt: null,
+  });
+  const res = responseRecorder();
+
+  try {
+    await createApiAccessToken({
+      body: { name: "All divisions", userId: userId.toString(), expiresInDays: 90 },
+      user: { _id: new mongoose.Types.ObjectId(), name: "System Administrator" },
+    }, res);
+  } finally {
+    User.findById = originalFindById;
+    ApiAccessToken.create = originalCreate;
+  }
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(isApiAccessToken(res.body.accessToken), true);
 });
