@@ -20,6 +20,7 @@ import OperationsKpiSetting from "../models/OperationsKpiSetting.js";
 import OperationsKpiResult from "../models/OperationsKpiResult.js";
 import CorrectiveActionPlan from "../models/CorrectiveActionPlan.js";
 import ReallocationRequest from "../models/ReallocationRequest.js";
+import PermanentOsrChange from "../models/PermanentOsrChange.js";
 import TeamPost from "../models/TeamPost.js";
 import { canAccessDivision, divisionFilter } from "../middleware/access.js";
 import { ensureDefaultKpiSettings } from "../utils/operationsReporting.js";
@@ -53,6 +54,7 @@ export const DIVISION_OWNED_MODELS = [
   OperationsKpiResult,
   CorrectiveActionPlan,
   ReallocationRequest,
+  PermanentOsrChange,
   TeamPost,
 ];
 

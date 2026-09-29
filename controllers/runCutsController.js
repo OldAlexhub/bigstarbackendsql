@@ -1,8 +1,6 @@
 import RunCut from "../models/RunCut.js";
 import Division from "../models/Division.js";
-import ChangeLog from "../models/ChangeLog.js";
-import Operator from "../models/Operator.js";
-import Vehicle from "../models/Vehicle.js";
+import PermanentOsrChange from "../models/PermanentOsrChange.js";
 import { canAccessDivision, divisionFilter } from "../middleware/access.js";
 import { computeHours } from "../utils/hours.js";
 import { getEffectiveThresholds } from "../utils/thresholds.js";
@@ -21,6 +19,16 @@ import { runInTransaction } from "../utils/transaction.js";
 import { httpError, respondToHttpError } from "../utils/httpError.js";
 import { logDeploymentActivity } from "../utils/deploymentActivityLog.js";
 import { OSR_DISRUPTION_TYPE } from "../utils/disruptionTypes.js";
+import { parseDateOnly } from "../utils/dateRange.js";
+import {
+  RUN_CUT_EDITABLE_FIELDS,
+  applyRunCutEdit,
+  diffRunCutEdit,
+  normalizeRunCutEdit,
+  runCutChangesFromTo,
+  runCutPreview,
+  validateRunCutAssignment,
+} from "../utils/runCutEdits.js";
 
 const queueProjectedMonths = (division, timezone) => {
   const month = monthInTimezone(timezone);
@@ -57,6 +65,23 @@ const withVehicleConflictFlags = (runCuts) => {
   });
 };
 
+const withScheduledPermanentOsrs = async (runCuts) => {
+  const ids = runCuts.map((runCut) => runCut._id);
+  if (!ids.length) return runCuts;
+  const scheduled = await PermanentOsrChange.find({
+    runCut: { $in: ids },
+    applicationStatus: "scheduled",
+  })
+    .populate("operator", "name pulloutAddress division active")
+    .populate("vehicle", "code division active")
+    .lean();
+  const byRunCut = new Map(scheduled.map((change) => [String(change.runCut), change]));
+  return runCuts.map((runCut) => ({
+    ...(runCut.toObject ? runCut.toObject() : runCut),
+    pendingPermanentOsr: byRunCut.get(String(runCut._id)) || null,
+  }));
+};
+
 export const listRunCuts = async (req, res) => {
   const includeStandby = req.query.includeStandby === "1";
 
@@ -65,7 +90,8 @@ export const listRunCuts = async (req, res) => {
       return res.status(403).json({ message: "No access to this division" });
     }
     const runCuts = await populateRunCut(RunCut.find({ division: req.query.division }));
-    return res.json({ runCuts: withVehicleConflictFlags(excludeStandby(runCuts, includeStandby)) });
+    const visible = withVehicleConflictFlags(excludeStandby(runCuts, includeStandby));
+    return res.json({ runCuts: await withScheduledPermanentOsrs(visible) });
   }
 
   const accessibleDivisionIds = await Division.find({
@@ -73,7 +99,8 @@ export const listRunCuts = async (req, res) => {
     active: { $ne: false },
   }).distinct("_id");
   const runCuts = await populateRunCut(RunCut.find({ division: { $in: accessibleDivisionIds } }));
-  res.json({ runCuts: withVehicleConflictFlags(excludeStandby(runCuts, includeStandby)) });
+  const visible = withVehicleConflictFlags(excludeStandby(runCuts, includeStandby));
+  res.json({ runCuts: await withScheduledPermanentOsrs(visible) });
 };
 
 export const createRunCut = async (req, res) => {
@@ -146,163 +173,6 @@ export const createRunCut = async (req, res) => {
   res.status(201).json({ runCut: populated });
 };
 
-const RUN_CUT_EDITABLE_FIELDS = [
-  "daysOfWeek",
-  "operator",
-  "vehicle",
-  "pulloutAddress",
-  "startTime",
-  "endTime",
-  "status",
-  "clientNotes",
-  "disruptionType",
-  "disruptionNotes",
-];
-
-// Shared by updateRunCut (Master Run Cuts) and updateRunCutPermanentOsr
-// (Deployment's Permanent OSR) — both edit the same persistent RunCut the
-// same way: resolve operator/vehicle by id or name, diff the editable
-// fields, block a recurring day/time conflict, recompute hours, save, and
-// re-project the standing change onto the rolling RunCutDay window
-// (projectAssignment leaves any day that already has its own Deployment
-// override alone). Only the caller-facing response and audit trail differ.
-const applyRunCutEdit = async (runCut, rawBody, userId) => {
-  const body = { ...rawBody };
-  const operatorWasUpdated = body.operatorId !== undefined || body.operatorName !== undefined;
-  let operatorDoc;
-  if (operatorWasUpdated) {
-    operatorDoc = await resolveOperator(
-      runCut.division,
-      body.operatorId !== undefined ? body.operatorId : body.operatorName
-    );
-    body.operator = operatorDoc?._id || null;
-    body.pulloutAddress = operatorDoc?.pulloutAddress || "";
-    delete body.operatorId;
-    delete body.operatorName;
-  }
-  if (!operatorWasUpdated) delete body.pulloutAddress;
-  let vehicleDoc;
-  if (body.vehicleId !== undefined || body.vehicleCode !== undefined) {
-    vehicleDoc = await resolveVehicle(
-      runCut.division,
-      body.vehicleId !== undefined ? body.vehicleId : body.vehicleCode
-    );
-    body.vehicle = vehicleDoc?._id || null;
-    delete body.vehicleId;
-    delete body.vehicleCode;
-  }
-
-  const changes = [];
-  for (const field of RUN_CUT_EDITABLE_FIELDS) {
-    if (body[field] === undefined) continue;
-    const oldValue = runCut[field];
-    const newValue = body[field];
-    const changed =
-      field === "daysOfWeek"
-        ? JSON.stringify([...(oldValue || [])].sort()) !== JSON.stringify([...(newValue || [])].sort())
-        : String(oldValue ?? "") !== String(newValue ?? "");
-    if (changed) {
-      changes.push({ field, oldValue, newValue });
-      runCut[field] = newValue;
-    }
-  }
-
-  const conflict = await findOperatorConflict({
-    operator: runCut.operator,
-    daysOfWeek: runCut.daysOfWeek,
-    startTime: runCut.startTime,
-    endTime: runCut.endTime,
-    status: runCut.status,
-    excludeRunCutId: runCut._id,
-  });
-  if (conflict) throw httpError(409, conflictMessage(conflict));
-  const vehicleConflict = await findVehicleConflict({
-    vehicle: runCut.vehicle,
-    daysOfWeek: runCut.daysOfWeek,
-    startTime: runCut.startTime,
-    endTime: runCut.endTime,
-    status: runCut.status,
-    excludeRunCutId: runCut._id,
-  });
-  if (vehicleConflict) throw httpError(409, vehicleConflictMessage(vehicleConflict));
-
-  const divisionDoc = await Division.findById(runCut.division);
-  const thresholds = await getEffectiveThresholds(divisionDoc, todayInTimezone(divisionDoc.timezone));
-  const { serviceHours, revenueHours } = computeHours({
-    startTime: runCut.startTime,
-    endTime: runCut.endTime,
-    status: runCut.status,
-    ...thresholds,
-  });
-  runCut.serviceHours = serviceHours;
-  runCut.revenueHours = revenueHours;
-  runCut.updatedBy = userId;
-
-  await runCut.save();
-  await projectAssignment(runCut, userId);
-
-  if (changes.length) {
-    await ChangeLog.insertMany(
-      changes.map((change) => ({
-        entityType: "RunCut",
-        entityId: runCut._id,
-        field: change.field,
-        oldValue: change.oldValue,
-        newValue: change.newValue,
-        changedBy: userId,
-      }))
-    );
-  }
-
-  return { changes, divisionDoc, operatorDoc, vehicleDoc };
-};
-
-const RUN_CUT_FIELD_LABELS = {
-  operator: "operator",
-  vehicle: "vehicle",
-  pulloutAddress: "pullout address",
-  startTime: "start time",
-  endTime: "end time",
-  status: "status",
-  clientNotes: "client notes",
-  disruptionType: "disruption type",
-  disruptionNotes: "reason",
-  daysOfWeek: "days",
-};
-
-// Builds a human-readable "from -> to" per changed field, for the Permanent
-// OSR change history (server/controllers/permanentOsrChangesController.js).
-// applyRunCutEdit only resolves the NEW operator/vehicle doc, so the prior
-// one is looked up here by its stored id — ChangeLog itself keeps the raw
-// ids, which is enough for its own generic diff trail but not for a report
-// meant to read as plain "from -> to" text.
-const runCutChangesFromTo = async (changes, { operatorDoc, vehicleDoc }) => {
-  const oldOperatorId = changes.find((change) => change.field === "operator")?.oldValue;
-  const oldVehicleId = changes.find((change) => change.field === "vehicle")?.oldValue;
-  const [oldOperatorDoc, oldVehicleDoc] = await Promise.all([
-    oldOperatorId ? Operator.findById(oldOperatorId).select("name") : null,
-    oldVehicleId ? Vehicle.findById(oldVehicleId).select("code") : null,
-  ]);
-
-  return changes.map((change) => {
-    const field = RUN_CUT_FIELD_LABELS[change.field] || change.field;
-    if (change.field === "operator") {
-      return { field, from: oldOperatorDoc?.name || "Unassigned", to: operatorDoc?.name || "Unassigned" };
-    }
-    if (change.field === "vehicle") {
-      return { field, from: oldVehicleDoc?.code || "Unassigned", to: vehicleDoc?.code || "Unassigned" };
-    }
-    if (change.field === "daysOfWeek") {
-      return {
-        field,
-        from: (change.oldValue || []).join(", ") || "None",
-        to: (change.newValue || []).join(", ") || "None",
-      };
-    }
-    return { field, from: String(change.oldValue || "Not set"), to: String(change.newValue || "Not set") };
-  });
-};
-
 const divisionVehicleConflicts = async (division) => {
   const divisionRunCuts = await RunCut.find({ division }, "vehicle daysOfWeek startTime endTime status");
   const conflictIds = findVehicleConflictIds(divisionRunCuts);
@@ -359,11 +229,21 @@ export const updateRunCutPermanentOsr = async (req, res) => {
   if (!disruptionNotes) {
     return res.status(400).json({ message: "A reason for this permanent OSR is required." });
   }
+  const rawEffectiveDate = req.body.effectiveDate ?? req.body.startDate;
+  const parsedEffectiveDate = rawEffectiveDate === undefined
+    ? null
+    : parseDateOnly(rawEffectiveDate, "effectiveDate");
+  if (parsedEffectiveDate?.error) {
+    return res.status(400).json({ message: parsedEffectiveDate.error });
+  }
 
   let runCutId;
   let division;
   let timezone;
   let routeCode;
+  let effectiveDate;
+  let applied = false;
+  let scheduledPermanentOsr = null;
   let summaryDetails = "";
   let fromToChanges = [];
   try {
@@ -377,14 +257,65 @@ export const updateRunCutPermanentOsr = async (req, res) => {
         throw httpError(400, "A permanent OSR applies to a revenue route, not a standby duty.");
       }
 
+      const divisionDoc = await Division.findById(runCut.division);
+      const today = todayInTimezone(divisionDoc.timezone);
+      effectiveDate = parsedEffectiveDate?.date || today;
+      if (effectiveDate < today) {
+        throw httpError(400, "effectiveDate cannot be before today in the division's timezone.");
+      }
+
       const body = { ...req.body, disruptionNotes, disruptionType: OSR_DISRUPTION_TYPE };
-      const { changes, divisionDoc, operatorDoc, vehicleDoc } = await applyRunCutEdit(runCut, body, req.user._id);
+      delete body.effectiveDate;
+      delete body.startDate;
+
+      let changes;
+      let operatorDoc;
+      let vehicleDoc;
+      if (effectiveDate.getTime() === today.getTime()) {
+        ({ changes, operatorDoc, vehicleDoc } = await applyRunCutEdit(runCut, body, req.user._id));
+        applied = true;
+      } else {
+        const existing = await PermanentOsrChange.findOne({
+          runCut: runCut._id,
+          applicationStatus: "scheduled",
+        }).select("_id");
+        if (existing) {
+          throw httpError(409, "This route already has a future permanent OSR scheduled.");
+        }
+
+        const normalized = await normalizeRunCutEdit(runCut, body);
+        operatorDoc = normalized.operatorDoc;
+        vehicleDoc = normalized.vehicleDoc;
+        changes = diffRunCutEdit(runCut, normalized.body);
+        await validateRunCutAssignment(runCutPreview(runCut, normalized.body));
+
+        const editableFields = RUN_CUT_EDITABLE_FIELDS.filter((field) => normalized.body[field] !== undefined);
+        const values = Object.fromEntries(
+          editableFields.map((field) => [field === "status" ? "runCutStatus" : field, normalized.body[field]])
+        );
+        scheduledPermanentOsr = await PermanentOsrChange.create({
+          division: runCut.division,
+          runCut: runCut._id,
+          route: runCut.route._id,
+          routeCode: runCut.route.code,
+          effectiveDate,
+          editableFields,
+          ...values,
+          disruptionNotes,
+          requestedBy: req.user._id,
+        });
+      }
 
       runCutId = runCut._id;
       division = runCut.division;
       timezone = divisionDoc.timezone;
       routeCode = runCut.route?.code;
       fromToChanges = await runCutChangesFromTo(changes, { operatorDoc, vehicleDoc });
+      fromToChanges.push({
+        field: "starting date",
+        from: "",
+        to: effectiveDate.toISOString().slice(0, 10),
+      });
       summaryDetails = fromToChanges.length
         ? `: set ${fromToChanges.map((change) => `${change.field} to ${change.to}`).join(", ")}`
         : "";
@@ -397,17 +328,23 @@ export const updateRunCutPermanentOsr = async (req, res) => {
     division,
     user: req.user,
     action: "runcut.permanent_osr_updated",
-    summary: `Processed a permanent OSR for ${routeCode}${summaryDetails} — ${disruptionNotes}`,
+    summary: `${applied ? "Processed" : "Scheduled"} a permanent OSR for ${routeCode}${summaryDetails} — ${disruptionNotes}`,
     route: routeCode,
     reason: disruptionNotes,
     changes: fromToChanges,
   });
 
-  queueProjectedMonths(division, timezone);
+  if (applied) queueProjectedMonths(division, timezone);
   const populated = await populateRunCut(RunCut.findById(runCutId));
   const vehicleConflicts = await divisionVehicleConflicts(division);
 
-  res.json({ runCut: populated, vehicleConflicts });
+  res.json({
+    runCut: populated,
+    vehicleConflicts,
+    applied,
+    effectiveDate,
+    scheduledPermanentOsr,
+  });
 };
 
 export const deleteRunCut = async (req, res) => {
@@ -423,6 +360,7 @@ export const deleteRunCut = async (req, res) => {
       const divisionDoc = await Division.findById(runCut.division);
       runCut.daysOfWeek = [];
       await projectAssignment(runCut, req.user._id);
+      await PermanentOsrChange.deleteMany({ runCut: runCut._id, applicationStatus: "scheduled" });
       await runCut.deleteOne();
       division = runCut.division;
       timezone = divisionDoc?.timezone;

@@ -609,6 +609,52 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[bigstar_write_lock] WHERE lock_name = 'globa
     );
   END;
 
+  IF OBJECT_ID(N'[dbo].[permanent_osr_changes]', N'U') IS NULL
+  BEGIN
+    CREATE TABLE [dbo].[permanent_osr_changes] (
+      [division] varchar(128) NOT NULL,
+      [run_cut] varchar(128) NOT NULL,
+      [route] varchar(128) NOT NULL,
+      [route_code] varchar(max) NOT NULL,
+      [effective_date] datetime2(6) NOT NULL,
+      [operator] varchar(128) NULL,
+      [vehicle] varchar(128) NULL,
+      [pullout_address] varchar(max) NOT NULL,
+      [start_time] varchar(max) NULL,
+      [end_time] varchar(max) NULL,
+      [run_cut_status] varchar(max) NOT NULL,
+      [client_notes] varchar(max) NOT NULL,
+      [disruption_type] varchar(max) NULL,
+      [disruption_notes] varchar(max) NOT NULL,
+      [application_status] varchar(max) NOT NULL,
+      [requested_by] varchar(128) NULL,
+      [applied_at] datetime2(6) NULL,
+      [application_error] varchar(max) NOT NULL,
+      [id] varchar(128) NOT NULL,
+      [created_at] datetime2(6) NOT NULL,
+      [updated_at] datetime2(6) NOT NULL,
+      [version] float NULL
+    );
+  END;
+
+  IF OBJECT_ID(N'[dbo].[permanent_osr_changes_editable_fields]', N'U') IS NULL
+  BEGIN
+    CREATE TABLE [dbo].[permanent_osr_changes_editable_fields] (
+      parent_id varchar(128) NOT NULL,
+      item_order int NOT NULL,
+      [value] varchar(max) NOT NULL
+    );
+  END;
+
+  IF OBJECT_ID(N'[dbo].[permanent_osr_changes_days_of_week]', N'U') IS NULL
+  BEGIN
+    CREATE TABLE [dbo].[permanent_osr_changes_days_of_week] (
+      parent_id varchar(128) NOT NULL,
+      item_order int NOT NULL,
+      [value] varchar(max) NOT NULL
+    );
+  END;
+
   IF OBJECT_ID(N'[dbo].[providers]', N'U') IS NULL
   BEGIN
     CREATE TABLE [dbo].[providers] (
@@ -1158,6 +1204,21 @@ IF OBJECT_ID(N'[dbo].[pk_operations_kpi_settings]', N'PK') IS NULL
 IF OBJECT_ID(N'[dbo].[pk_operators]', N'PK') IS NULL
   ALTER TABLE [dbo].[operators] ADD CONSTRAINT [pk_operators] PRIMARY KEY NONCLUSTERED ([id]) NOT ENFORCED;
 
+IF OBJECT_ID(N'[dbo].[pk_permanent_osr_changes]', N'PK') IS NULL
+  ALTER TABLE [dbo].[permanent_osr_changes] ADD CONSTRAINT [pk_permanent_osr_changes] PRIMARY KEY NONCLUSTERED ([id]) NOT ENFORCED;
+
+IF OBJECT_ID(N'[dbo].[pk_permanent_osr_changes_editable_fields]', N'PK') IS NULL
+  ALTER TABLE [dbo].[permanent_osr_changes_editable_fields] ADD CONSTRAINT [pk_permanent_osr_changes_editable_fields] PRIMARY KEY NONCLUSTERED ([parent_id], [item_order]) NOT ENFORCED;
+
+IF OBJECT_ID(N'[dbo].[fk_permanent_osr_changes_editable_fields_parent]', N'F') IS NULL
+  ALTER TABLE [dbo].[permanent_osr_changes_editable_fields] ADD CONSTRAINT [fk_permanent_osr_changes_editable_fields_parent] FOREIGN KEY ([parent_id]) REFERENCES [dbo].[permanent_osr_changes] ([id]) NOT ENFORCED;
+
+IF OBJECT_ID(N'[dbo].[pk_permanent_osr_changes_days_of_week]', N'PK') IS NULL
+  ALTER TABLE [dbo].[permanent_osr_changes_days_of_week] ADD CONSTRAINT [pk_permanent_osr_changes_days_of_week] PRIMARY KEY NONCLUSTERED ([parent_id], [item_order]) NOT ENFORCED;
+
+IF OBJECT_ID(N'[dbo].[fk_permanent_osr_changes_days_of_week_parent]', N'F') IS NULL
+  ALTER TABLE [dbo].[permanent_osr_changes_days_of_week] ADD CONSTRAINT [fk_permanent_osr_changes_days_of_week_parent] FOREIGN KEY ([parent_id]) REFERENCES [dbo].[permanent_osr_changes] ([id]) NOT ENFORCED;
+
 IF OBJECT_ID(N'[dbo].[pk_providers]', N'PK') IS NULL
   ALTER TABLE [dbo].[providers] ADD CONSTRAINT [pk_providers] PRIMARY KEY NONCLUSTERED ([id]) NOT ENFORCED;
 
@@ -1256,4 +1317,3 @@ IF OBJECT_ID(N'[dbo].[pk_vehicles]', N'PK') IS NULL
 
 IF OBJECT_ID(N'[dbo].[pk_weekly_division_summaries]', N'PK') IS NULL
   ALTER TABLE [dbo].[weekly_division_summaries] ADD CONSTRAINT [pk_weekly_division_summaries] PRIMARY KEY NONCLUSTERED ([id]) NOT ENFORCED;
-

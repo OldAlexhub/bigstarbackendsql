@@ -3,6 +3,7 @@ import Division from "../models/Division.js";
 import RunCut from "../models/RunCut.js";
 import RunCutDay from "../models/RunCutDay.js";
 import DailyIssueLog from "../models/DailyIssueLog.js";
+import PermanentOsrChange from "../models/PermanentOsrChange.js";
 import { canAccessDivision, divisionFilter } from "../middleware/access.js";
 import { runInTransaction } from "../utils/transaction.js";
 import { restoreCoverageOwnedByStandbyDays } from "../utils/standbyCoveragePersistence.js";
@@ -96,6 +97,7 @@ export const deleteRoute = async (req, res) => {
     await DailyIssueLog.deleteMany({ runCutDay: { $in: futureIds }, autoSyncTag: { $ne: null } });
     await restoreCoverageOwnedByStandbyDays(futureIds, req.user._id);
     await RunCutDay.deleteMany({ _id: { $in: futureIds } });
+    await PermanentOsrChange.deleteMany({ route: route._id, applicationStatus: "scheduled" });
     await RunCut.deleteOne({ route: route._id });
 
     route.active = false;

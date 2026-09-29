@@ -13,6 +13,7 @@ import { createErrorHandler } from "./middleware/errorHandler.js";
 import RunCutDay from "./models/RunCutDay.js";
 import LoginRateLimitCounter from "./models/LoginRateLimitCounter.js";
 import ReallocationRequest from "./models/ReallocationRequest.js";
+import PermanentOsrChange from "./models/PermanentOsrChange.js";
 import TeamPost from "./models/TeamPost.js";
 import RetentionCleanupLog from "./models/RetentionCleanupLog.js";
 import Operator from "./models/Operator.js";
@@ -47,6 +48,7 @@ import { scheduleWeeklyFinalization } from "./jobs/finalizeWeeks.js";
 import { scheduleAssignmentRollover } from "./jobs/rolloverAssignments.js";
 import { scheduleOperationsReconciliation } from "./jobs/reconcileOperationsReporting.js";
 import { scheduleReallocationApplications } from "./jobs/applyReallocationRequests.js";
+import { schedulePermanentOsrApplications } from "./jobs/applyPermanentOsrChanges.js";
 import { scheduleDataRetentionCleanup } from "./jobs/dataRetention.js";
 import { backfillAssignmentRosters } from "./utils/backfillAssignmentRosters.js";
 
@@ -167,6 +169,7 @@ const start = async () => {
   await RunCutDay.createIndexes();
   await LoginRateLimitCounter.createIndexes();
   await ReallocationRequest.createIndexes();
+  await PermanentOsrChange.createIndexes();
   await TeamPost.createIndexes();
   await RetentionCleanupLog.createIndexes();
   if (shuttingDown) return;
@@ -179,6 +182,7 @@ const start = async () => {
     scheduleAssignmentRollover(),
     scheduleOperationsReconciliation(),
     scheduleReallocationApplications(),
+    schedulePermanentOsrApplications(),
     scheduleDataRetentionCleanup()
   );
 };

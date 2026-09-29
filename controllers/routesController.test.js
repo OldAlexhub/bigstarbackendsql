@@ -5,6 +5,7 @@ import Route from "../models/Route.js";
 import RunCut from "../models/RunCut.js";
 import RunCutDay from "../models/RunCutDay.js";
 import DailyIssueLog from "../models/DailyIssueLog.js";
+import PermanentOsrChange from "../models/PermanentOsrChange.js";
 import { createRoute, deleteRoute } from "./routesController.js";
 
 const response = () => ({
@@ -43,6 +44,7 @@ test("route removal retires the route while preserving its historical identity",
     deleteDays: RunCutDay.deleteMany,
     deleteIssues: DailyIssueLog.deleteMany,
     deleteRunCut: RunCut.deleteOne,
+    deletePermanentOsrs: PermanentOsrChange.deleteMany,
     transaction: mongoose.connection.transaction,
   };
   let saved = false;
@@ -60,6 +62,7 @@ test("route removal retires the route while preserving its historical identity",
   RunCutDay.deleteMany = async () => ({});
   DailyIssueLog.deleteMany = async () => ({});
   RunCut.deleteOne = async () => ({});
+  PermanentOsrChange.deleteMany = async () => ({});
   mongoose.connection.transaction = async (work) => work();
   try {
     const res = response();
@@ -75,6 +78,7 @@ test("route removal retires the route while preserving its historical identity",
     RunCutDay.deleteMany = originals.deleteDays;
     DailyIssueLog.deleteMany = originals.deleteIssues;
     RunCut.deleteOne = originals.deleteRunCut;
+    PermanentOsrChange.deleteMany = originals.deletePermanentOsrs;
     mongoose.connection.transaction = originals.transaction;
   }
 });

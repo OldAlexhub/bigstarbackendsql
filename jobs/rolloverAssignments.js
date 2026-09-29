@@ -3,6 +3,7 @@ import Division from "../models/Division.js";
 import { recomputeRunCutHours } from "../utils/recomputeRunCutHours.js";
 import { projectAssignment } from "../utils/projectAssignment.js";
 import { runInTransaction } from "../utils/transaction.js";
+import { applyDuePermanentOsrChanges } from "../utils/permanentOsrChanges.js";
 
 // Keeps RunCutDay coverage rolling forward automatically from each route's
 // live RunCut assignment, so a route someone set up last month keeps
@@ -13,6 +14,10 @@ import { runInTransaction } from "../utils/transaction.js";
 // its start date automatically, without anyone re-saving every run cut by
 // hand once that date arrives.
 export const rolloverAssignments = async () => {
+  // Activate effective-dated standing changes before projecting the new
+  // rolling window, so the old Master Run Cut cannot overwrite a change
+  // whose start date has just arrived.
+  await applyDuePermanentOsrChanges();
   const runCuts = await RunCut.find({});
   for (const runCut of runCuts) {
     await runInTransaction(async () => {

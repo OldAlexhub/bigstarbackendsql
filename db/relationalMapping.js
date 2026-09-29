@@ -15,6 +15,7 @@ const MODEL_TABLES = {
   OperationsKpiResult: "operations_kpi_results",
   OperationsKpiSetting: "operations_kpi_settings",
   Operator: "operators",
+  PermanentOsrChange: "permanent_osr_changes",
   Provider: "providers",
   ReallocationRequest: "reallocation_requests",
   RetentionCleanupLog: "retention_cleanup_logs",
