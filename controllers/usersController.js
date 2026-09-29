@@ -4,6 +4,8 @@ import {
   normalizePageAccessLevels,
   sectionsForPageAccess,
 } from "../utils/pageAccess.js";
+import { isValidEmail, normalizeEmail, passwordValidationMessage } from "../utils/userCredentials.js";
+import { isSuperAdmin, SUPER_ADMIN_ROLE } from "../utils/roles.js";
 
 const duplicateMessage = (error) => {
   const field = Object.keys(error.keyPattern || {})[0] || "value";
@@ -28,8 +30,20 @@ export const createUser = async (req, res) => {
   if (!username || !password || !name) {
     return res.status(400).json({ message: "username, password, and name are required" });
   }
+  const normalizedEmail = email ? normalizeEmail(email) : null;
+  if (normalizedEmail && !isValidEmail(normalizedEmail)) {
+    return res.status(400).json({ message: "Enter a valid email address." });
+  }
+  const passwordError = passwordValidationMessage(password, { username, email: normalizedEmail });
+  if (passwordError) return res.status(400).json({ message: passwordError });
   if (role && !ROLES.includes(role)) {
     return res.status(400).json({ message: `role must be one of: ${ROLES.join(", ")}` });
+  }
+  if (role === SUPER_ADMIN_ROLE && !isSuperAdmin(req.user)) {
+    const existingSuperAdmin = await User.exists({ role: SUPER_ADMIN_ROLE, active: { $ne: false } });
+    if (existingSuperAdmin) {
+      return res.status(403).json({ message: "Only a Super Admin can create another Super Admin." });
+    }
   }
 
   try {
@@ -44,7 +58,7 @@ export const createUser = async (req, res) => {
       username,
       password,
       name,
-      email: email || null,
+      email: normalizedEmail,
       phone: phone || "",
       title: title || "",
       department: department || "",
@@ -72,13 +86,40 @@ export const updateUser = async (req, res) => {
   if (!user) return res.status(404).json({ message: "User not found" });
 
   const { password, name, email, phone, title, department, role, sections, pageAccess, pageAccessLevels, divisionAccess, active } = req.body;
+  if ((user.role === SUPER_ADMIN_ROLE || role === SUPER_ADMIN_ROLE) && !isSuperAdmin(req.user)) {
+    return res.status(403).json({ message: "Only a Super Admin can change a Super Admin account." });
+  }
+  const changingActiveSuperAdmin = user.role === SUPER_ADMIN_ROLE && (
+    (role !== undefined && role !== SUPER_ADMIN_ROLE) || active === false
+  );
+  if (changingActiveSuperAdmin) {
+    const otherSuperAdmin = await User.exists({
+      _id: { $ne: user._id },
+      role: SUPER_ADMIN_ROLE,
+      active: { $ne: false },
+    });
+    if (!otherSuperAdmin) {
+      return res.status(400).json({ message: "At least one active Super Admin must remain." });
+    }
+  }
+  const normalizedEmail = email === undefined ? undefined : email ? normalizeEmail(email) : null;
+  if (normalizedEmail && !isValidEmail(normalizedEmail)) {
+    return res.status(400).json({ message: "Enter a valid email address." });
+  }
+  if (password) {
+    const passwordError = passwordValidationMessage(password, {
+      username: user.username,
+      email: normalizedEmail === undefined ? user.email : normalizedEmail,
+    });
+    if (passwordError) return res.status(400).json({ message: passwordError });
+  }
   if (role !== undefined) {
     if (!ROLES.includes(role)) return res.status(400).json({ message: `role must be one of: ${ROLES.join(", ")}` });
     user.role = role;
   }
   if (password) user.password = password;
   if (name !== undefined) user.name = name;
-  if (email !== undefined) user.email = email || null;
+  if (email !== undefined) user.email = normalizedEmail;
   if (phone !== undefined) user.phone = phone;
   if (title !== undefined) user.title = title;
   if (department !== undefined) user.department = department;
@@ -128,6 +169,19 @@ export const deleteUser = async (req, res) => {
   }
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ message: "User not found" });
+  if (user.role === SUPER_ADMIN_ROLE) {
+    if (!isSuperAdmin(req.user)) {
+      return res.status(403).json({ message: "Only a Super Admin can delete a Super Admin account." });
+    }
+    const otherSuperAdmin = await User.exists({
+      _id: { $ne: user._id },
+      role: SUPER_ADMIN_ROLE,
+      active: { $ne: false },
+    });
+    if (!otherSuperAdmin) {
+      return res.status(400).json({ message: "At least one active Super Admin must remain." });
+    }
+  }
   await user.deleteOne();
   res.json({ message: "User deleted" });
 };

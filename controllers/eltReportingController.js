@@ -9,6 +9,7 @@ import { divisionFilter } from "../middleware/access.js";
 import { addDays, emptyMetrics, accumulate, coveragePct, runCutFulfillmentPct } from "../utils/weeklyMetrics.js";
 import { actualRevenueFulfillment, combineActualRevenue } from "../utils/actualRevenueFulfillment.js";
 import { pdfPageLeft, drawPdfTable } from "../utils/pdfTable.js";
+import { isGlobalAdmin } from "../utils/roles.js";
 
 const iso = (d) => new Date(d).toISOString().slice(0, 10);
 const round2 = (n) => (n == null || !Number.isFinite(n) ? null : Math.round(n * 100) / 100);
@@ -89,7 +90,7 @@ export const computeEltOperationsReport = async (req, from, to, divisionIds) => 
     // Keep a requested subset inside the caller's division boundary. This
     // matters for explicitly assigned reporting users; a query string must
     // never be able to replace the access filter with an arbitrary ID list.
-    const accessibleIds = req.user.role === "ELT"
+    const accessibleIds = isGlobalAdmin(req.user)
       ? divisionIds
       : divisionIds.filter((divisionId) =>
         req.user.divisionAccess.some((allowedId) => String(allowedId) === String(divisionId))

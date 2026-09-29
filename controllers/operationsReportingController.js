@@ -7,6 +7,7 @@ import User from "../models/User.js";
 import { canAccessDivision, divisionFilter } from "../middleware/access.js";
 import { KPI_BY_KEY, isCalendarMonth, monthsBetween, roundKpi } from "../utils/operationsKpis.js";
 import { computeOperationsRange, findCapTriggerMonth } from "../utils/operationsReporting.js";
+import { GLOBAL_ADMIN_ROLES, isGlobalAdmin } from "../utils/roles.js";
 
 const validRange = (res, from, to, maxMonths = 12) => {
   if (!isCalendarMonth(from) || !isCalendarMonth(to)) {
@@ -36,7 +37,7 @@ const accessibleDivisions = async (req, requested) => {
 const capJson = (cap, user) => {
   const assignedId = String(cap.assignedManager?._id || cap.assignedManager || "");
   const ownerId = String(cap.ownerUser?._id || cap.ownerUser || "");
-  const canEdit = user.role === "ELT" || assignedId === String(user._id);
+  const canEdit = isGlobalAdmin(user) || assignedId === String(user._id);
   return {
     id: String(cap._id),
     division: cap.division,
@@ -172,7 +173,7 @@ export const listCaps = async (req, res) => {
 };
 
 const hasOperationsReportingAccess = (user, divisionId) =>
-  user.role === "ELT" || (user.sections.includes("operations_reporting") && canAccessDivision(user, divisionId));
+  isGlobalAdmin(user) || (user.sections.includes("operations_reporting") && canAccessDivision(user, divisionId));
 
 export const openCap = async (req, res) => {
   const { division, kpiKey, triggerMonth } = req.body;
@@ -315,7 +316,7 @@ export const listCapPeople = async (req, res) => {
   const users = await User.find({
     active: true,
     $or: [
-      { role: "ELT" },
+      { role: { $in: GLOBAL_ADMIN_ROLES } },
       { divisionAccess: { $in: divisionIds }, sections: "operations_reporting" },
     ],
   }).select("name role divisionAccess").sort({ name: 1 }).lean();
@@ -339,7 +340,7 @@ const getCapForUser = async (req, res) => {
   return cap;
 };
 
-const canEditCap = (user, cap) => user.role === "ELT" || String(cap.assignedManager || "") === String(user._id);
+const canEditCap = (user, cap) => isGlobalAdmin(user) || String(cap.assignedManager || "") === String(user._id);
 
 export const updateCap = async (req, res) => {
   const cap = await getCapForUser(req, res);
@@ -374,10 +375,10 @@ export const updateCap = async (req, res) => {
       const owner = await User.findOne({
         _id: cap.ownerUser,
         active: true,
-        $or: [{ role: "ELT" }, { sections: "operations_reporting" }],
+        $or: [{ role: { $in: GLOBAL_ADMIN_ROLES } }, { sections: "operations_reporting" }],
       });
       if (!owner) return res.status(400).json({ message: "The selected action owner is unavailable." });
-      if (owner.role !== "ELT" && !owner.divisionAccess.some((value) => String(value) === String(cap.division))) {
+      if (!isGlobalAdmin(owner) && !owner.divisionAccess.some((value) => String(value) === String(cap.division))) {
         return res.status(400).json({ message: "The selected action owner does not have access to this division." });
       }
       if (!cap.ownerName) cap.ownerName = owner.name;
@@ -385,11 +386,11 @@ export const updateCap = async (req, res) => {
     changed.ownerUser = cap.ownerUser;
   }
   if (req.body.assignedManager !== undefined) {
-    if (req.user.role !== "ELT") return res.status(403).json({ message: "Only ELT may reassign a CAP." });
+    if (!isGlobalAdmin(req.user)) return res.status(403).json({ message: "Only ELT or Super Admin may reassign a CAP." });
     if (req.body.assignedManager && !mongoose.isValidObjectId(req.body.assignedManager)) return res.status(400).json({ message: "Choose a valid manager." });
     if (req.body.assignedManager) {
       const manager = await User.findOne({ _id: req.body.assignedManager, active: true });
-      if (!manager || (manager.role !== "ELT" && (!manager.sections.includes("operations_reporting") || !manager.divisionAccess.some((value) => String(value) === String(cap.division))))) {
+      if (!manager || (!isGlobalAdmin(manager) && (!manager.sections.includes("operations_reporting") || !manager.divisionAccess.some((value) => String(value) === String(cap.division))))) {
         return res.status(400).json({ message: "The selected manager needs Operations Reporting access to this division." });
       }
     }

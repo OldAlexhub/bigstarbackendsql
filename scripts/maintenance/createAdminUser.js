@@ -9,7 +9,7 @@ const run = async () => {
   const username = process.env.ADMIN_USERNAME?.trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD;
   const name = process.env.ADMIN_NAME?.trim();
-  const role = process.env.ADMIN_ROLE?.trim() || "ELT";
+  const role = process.env.ADMIN_ROLE?.trim() || "Super Admin";
 
   const missing = [
     ["ADMIN_USERNAME", username],

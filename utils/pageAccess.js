@@ -1,7 +1,9 @@
+import { isGlobalAdmin, isSuperAdmin } from "./roles.js";
+
 export const PAGE_ACCESS_GROUPS = [
   {
     key: "general",
-    pages: ["dashboard", "settings.general"],
+    pages: ["dashboard", "settings.general", "settings.api_catalog"],
   },
   {
     key: "master_run_cuts",
@@ -103,7 +105,8 @@ export const sectionsForPageAccess = (pages) => [
 // saves an explicit pageAccess list and opts the account into the new model.
 export const canAccessPage = (user, page) => {
   if (!user) return false;
-  if (user.role === "ELT") return true;
+  if (page === "settings.api_catalog") return isSuperAdmin(user);
+  if (isGlobalAdmin(user)) return true;
   if (user.pageAccessConfigured) return (user.pageAccess || []).includes(page);
 
   if (page === "dashboard") return true;
@@ -125,10 +128,10 @@ const storedPageAccessLevel = (user, page) => {
 
 // Page-level access existed before read/write levels. Missing levels on an
 // already-authorized account therefore mean write access, preserving every
-// existing user's capabilities until an ELT administrator changes them.
+// existing user's capabilities until a global administrator changes them.
 export const pageAccessLevel = (user, page) => {
   if (!canAccessPage(user, page)) return null;
-  if (user.role === "ELT" || !user.pageAccessConfigured) return "write";
+  if (isGlobalAdmin(user) || !user.pageAccessConfigured) return "write";
   return storedPageAccessLevel(user, page) === "read" ? "read" : "write";
 };
 
@@ -137,7 +140,7 @@ export const canWritePage = (user, page) => pageAccessLevel(user, page) === "wri
 export const canAccessAnyPage = (user, pages) => (pages || []).some((page) => canAccessPage(user, page));
 
 export const canAccessPageSection = (user, section) => {
-  if (user?.role === "ELT") return true;
+  if (isGlobalAdmin(user)) return true;
   if (!user?.pageAccessConfigured) return (user?.sections || []).includes(section);
   return (user.pageAccess || []).some((page) => sectionForPage(page) === section);
 };

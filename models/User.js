@@ -1,6 +1,8 @@
 import mongoose from "../db/sqlMongoose.js";
 import bcrypt from "bcrypt";
 import { PAGE_ACCESS } from "../utils/pageAccess.js";
+import { SUPER_ADMIN_ROLE } from "../utils/roles.js";
+import { isValidEmail, passwordValidationMessage } from "../utils/userCredentials.js";
 
 export const SECTIONS = [
   "master_run_cuts",
@@ -11,11 +13,9 @@ export const SECTIONS = [
   "operations_reporting",
 ];
 
-// "ELT" is the only role that bypasses section/division checks everywhere
-// in the app (see requireELT/canAccessDivision/divisionFilter in
-// middleware/access.js) — the rest of the hierarchy is informational plus
-// the basis for sections/divisionAccess, same as "staff" behaved before.
-export const ROLES = ["ELT", "VP", "Director", "Sr Manager", "Manager", "Coordinator"];
+// Global administration roles bypass operational section/division checks.
+// API administration is separately restricted to Super Admin.
+export const ROLES = [SUPER_ADMIN_ROLE, "ELT", "VP", "Director", "Sr Manager", "Manager", "Coordinator"];
 
 const userSchema = new mongoose.Schema(
   {
@@ -30,6 +30,27 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       select: false,
+      validate: {
+        validator(value) {
+          return !passwordValidationMessage(value, {
+            username: this.username,
+            email: this.email,
+            allowHash: true,
+          });
+        },
+        message: (props) => passwordValidationMessage(props.value, { allowHash: true }) || "Invalid password.",
+      },
+    },
+    pinHash: {
+      type: String,
+      select: false,
+      default: null,
+      relationalAddIfMissing: true,
+    },
+    pinConfiguredAt: {
+      type: Date,
+      default: null,
+      relationalAddIfMissing: true,
     },
     name: {
       type: String,
@@ -41,6 +62,11 @@ const userSchema = new mongoose.Schema(
       trim: true,
       lowercase: true,
       default: null,
+      maxlength: 254,
+      validate: {
+        validator: (value) => value == null || value === "" || isValidEmail(value),
+        message: "Enter a valid email address.",
+      },
     },
     phone: {
       type: String,
@@ -106,6 +132,16 @@ userSchema.pre("save", async function () {
 
 userSchema.methods.comparePassword = function (candidate) {
   return bcrypt.compare(candidate, this.password);
+};
+
+userSchema.methods.setPin = async function (pin) {
+  this.pinHash = await bcrypt.hash(pin, 12);
+  this.pinConfiguredAt = new Date();
+};
+
+userSchema.methods.comparePin = function (candidate) {
+  if (!this.pinHash) return false;
+  return bcrypt.compare(candidate, this.pinHash);
 };
 
 userSchema.methods.toSessionJSON = function () {

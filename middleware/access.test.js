@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   requireAnyPageWrite,
   requireELT,
+  requireSuperAdmin,
   requirePageAccess,
   requirePageWrite,
   requireSection,
@@ -30,15 +31,30 @@ test("Network Success is assignable while ELT retains automatic access", () => {
   assert.equal(denied.statusCode, 403);
 });
 
-test("Company Outlook remains ELT-only", () => {
+test("global administration accepts ELT and Super Admin", () => {
   let allowed = false;
   requireELT({ user: { role: "ELT" } }, response(), () => { allowed = true; });
+  assert.equal(allowed, true);
+
+  allowed = false;
+  requireELT({ user: { role: "Super Admin" } }, response(), () => { allowed = true; });
   assert.equal(allowed, true);
 
   const denied = response();
   requireELT({ user: { role: "manager" } }, denied, () => {});
   assert.equal(denied.statusCode, 403);
-  assert.equal(denied.body.message, "ELT access required");
+  assert.equal(denied.body.message, "ELT or Super Admin access required");
+});
+
+test("API administration remains Super Admin-only", () => {
+  let allowed = false;
+  requireSuperAdmin({ user: { role: "Super Admin" } }, response(), () => { allowed = true; });
+  assert.equal(allowed, true);
+
+  const denied = response();
+  requireSuperAdmin({ user: { role: "ELT" } }, denied, () => {});
+  assert.equal(denied.statusCode, 403);
+  assert.equal(denied.body.message, "Super Admin access required");
 });
 
 test("a non-ELT Settings writer still cannot change retention configuration", () => {

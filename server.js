@@ -19,7 +19,9 @@ import RetentionCleanupLog from "./models/RetentionCleanupLog.js";
 import Operator from "./models/Operator.js";
 import Vehicle from "./models/Vehicle.js";
 import RunCut from "./models/RunCut.js";
+import ApiAccessToken from "./models/ApiAccessToken.js";
 import authRoutes from "./routes/authRoutes.js";
+import apiAccessTokensRoutes from "./routes/apiAccessTokensRoutes.js";
 import divisionsRoutes from "./routes/divisionsRoutes.js";
 import routesRoutes from "./routes/routesRoutes.js";
 import operatorsRoutes from "./routes/operatorsRoutes.js";
@@ -91,6 +93,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/api-access-tokens", apiAccessTokensRoutes);
 app.use("/api/divisions", divisionsRoutes);
 app.use("/api/routes", routesRoutes);
 app.use("/api/operators", operatorsRoutes);
@@ -166,6 +169,7 @@ const start = async () => {
   await Operator.createIndexes();
   await Vehicle.createIndexes();
   await RunCut.createIndexes();
+  await ApiAccessToken.createIndexes();
   await RunCutDay.createIndexes();
   await LoginRateLimitCounter.createIndexes();
   await ReallocationRequest.createIndexes();

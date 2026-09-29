@@ -79,12 +79,17 @@ test("Fabric Warehouse compatibility layer supports the server's core persistenc
 
     const user = await User.create({
       username: "sql-admin",
-      password: "integration-password",
+      password: "Integration!Pass123",
       name: "SQL Admin",
       role: "ELT",
     });
     const authenticated = await User.findById(user._id).select("+password");
-    assert.equal(await authenticated.comparePassword("integration-password"), true);
+    assert.equal(await authenticated.comparePassword("Integration!Pass123"), true);
+    await authenticated.setPin("483920");
+    await authenticated.save();
+    const pinConfigured = await User.findById(user._id).select("+pinHash");
+    assert.equal(await pinConfigured.comparePin("483920"), true);
+    assert.ok(pinConfigured.pinConfiguredAt instanceof Date);
 
     await assert.rejects(
       mongoose.connection.transaction(async () => {

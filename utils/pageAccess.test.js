@@ -18,6 +18,7 @@ test("page access normalization rejects unknown pages and removes duplicates", (
   assert.equal(PAGE_ACCESS.includes("deployment.client_report"), true);
   assert.equal(PAGE_ACCESS.includes("network_success.tui_helper"), true);
   assert.equal(PAGE_ACCESS.includes("report_builder"), true);
+  assert.equal(PAGE_ACCESS.includes("settings.api_catalog"), true);
 });
 
 test("sections are derived from the selected granular pages", () => {
@@ -27,8 +28,10 @@ test("sections are derived from the selected granular pages", () => {
   );
 });
 
-test("ELT always has access and explicit empty access denies non-ELT users", () => {
+test("Super Admin has every page while ELT excludes API administration", () => {
+  assert.equal(canAccessPage({ role: "Super Admin", pageAccessConfigured: true, pageAccess: [] }, "settings.api_catalog"), true);
   assert.equal(canAccessPage({ role: "ELT", pageAccessConfigured: true, pageAccess: [] }, "leaderboard"), true);
+  assert.equal(canAccessPage({ role: "ELT", pageAccessConfigured: true, pageAccess: [] }, "settings.api_catalog"), false);
   assert.equal(
     canAccessPage({ role: "Manager", sections: ["deployment"], pageAccessConfigured: true, pageAccess: [] }, "deployment.live_schedule"),
     false
@@ -46,6 +49,18 @@ test("Report Builder is an independently assignable page permission", () => {
   assert.equal(canAccessPage(user, "report_builder"), true);
   assert.equal(canAccessPage(user, "elt_reporting.operations_report"), false);
   assert.equal(canAccessPage(user, "leaderboard"), false);
+});
+
+test("API Catalog cannot be assigned to a non-Super-Admin user", () => {
+  const user = {
+    role: "Manager",
+    sections: [],
+    pageAccessConfigured: true,
+    pageAccess: ["settings.api_catalog"],
+  };
+
+  assert.equal(canAccessPage(user, "settings.api_catalog"), false);
+  assert.equal(canAccessPage(user, "settings.general"), false);
 });
 
 test("configured pages support read-only and read-and-write levels", () => {

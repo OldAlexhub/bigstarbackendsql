@@ -12,6 +12,7 @@ import {
   runCutFulfillmentPct,
 } from "../utils/weeklyMetrics.js";
 import { todayInTimezone } from "../utils/timezone.js";
+import { isGlobalAdmin } from "../utils/roles.js";
 
 const emptyTotals = () => ({
   routesSuspendedToday: 0,
@@ -21,7 +22,7 @@ const emptyTotals = () => ({
 
 export const getHomeSummary = async (req, res) => {
   const hasOperationsAccess =
-    req.user.role === "ELT" ||
+    isGlobalAdmin(req.user) ||
     req.user.sections.includes("master_run_cuts") ||
     req.user.sections.includes("deployment") ||
     req.user.sections.includes("network_success");

@@ -7,6 +7,7 @@ import CorrectiveActionPlan from "../models/CorrectiveActionPlan.js";
 import { divisionFilter } from "../middleware/access.js";
 import { KPI_DEFINITIONS, KPI_KEYS, isCalendarMonth } from "../utils/operationsKpis.js";
 import { ensureDefaultKpiSettings, queueOperationsRangeRefresh } from "../utils/operationsReporting.js";
+import { isGlobalAdmin } from "../utils/roles.js";
 
 const retentionKeys = ["operationalHistory", "auditLogs", "teamPosts", "networkSubmissionStaging"];
 
@@ -54,7 +55,7 @@ const validateRetention = (input, settings) => {
 
 export const getSettings = async (req, res) => {
   const settings = await Settings.getSingleton();
-  res.json({ settings: settingsResponse(settings, { includeRetention: req.user.role === "ELT" }) });
+  res.json({ settings: settingsResponse(settings, { includeRetention: isGlobalAdmin(req.user) }) });
 };
 
 export const updateSettings = async (req, res) => {
@@ -118,9 +119,9 @@ export const saveOperationsKpiSetting = async (req, res) => {
     if (!mongoose.isValidObjectId(assignedManager)) return res.status(400).json({ message: "Choose a valid manager." });
     manager = await User.findOne({ _id: assignedManager, active: true });
     if (!manager) return res.status(400).json({ message: "The selected manager is unavailable." });
-    const hasDivision = manager.role === "ELT" || manager.divisionAccess.some((value) => String(value) === String(division));
+    const hasDivision = isGlobalAdmin(manager) || manager.divisionAccess.some((value) => String(value) === String(division));
     if (!hasDivision) return res.status(400).json({ message: "The selected manager does not have access to this division." });
-    if (manager.role !== "ELT" && !manager.sections.includes("operations_reporting")) {
+    if (!isGlobalAdmin(manager) && !manager.sections.includes("operations_reporting")) {
       return res.status(400).json({ message: "The selected manager needs Operations Reporting access." });
     }
   }

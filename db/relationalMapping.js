@@ -1,6 +1,7 @@
 const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const MODEL_TABLES = {
+  ApiAccessToken: "api_access_tokens",
   ChangeLog: "change_logs",
   CorrectiveActionPlan: "corrective_action_plans",
   CustomerServiceEntry: "customer_service_entries",
@@ -66,6 +67,7 @@ const scalarDescriptor = (path, schemaType, column = columnNameForPath(path)) =>
   column,
   instance: schemaType.instance,
   ref: schemaType.options?.ref || null,
+  addIfMissing: schemaType.options?.relationalAddIfMissing === true,
   required:
     path === "_id" ||
     schemaType.options?.required === true ||
@@ -220,6 +222,19 @@ export const ddlForMapping = (mapping, schemaName = "dbo") => {
 ${mainColumns.join(",\n")}
     );
   END;`];
+
+  for (const column of mapping.columns.filter((item) => item.addIfMissing)) {
+    if (column.required) throw new Error(`Incremental relational column ${mapping.modelName}.${column.path} must be nullable.`);
+    statements.push(`
+  IF NOT EXISTS (
+    SELECT 1
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = N'${schemaName}'
+      AND TABLE_NAME = N'${mapping.mainTable}'
+      AND COLUMN_NAME = N'${column.column}'
+  )
+    ALTER TABLE ${main} ADD ${quoteIdentifier(column.column)} ${sqlTypeForInstance(column.instance)} NULL;`);
+  }
 
   for (const array of mapping.arrays) {
     const qualified = `${schema}.${quoteIdentifier(array.table)}`;

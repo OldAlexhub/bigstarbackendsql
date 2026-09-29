@@ -3,10 +3,33 @@ import test from "node:test";
 import User from "./User.js";
 import { canWritePage } from "../utils/pageAccess.js";
 
+test("Super Admin is a valid user role", async () => {
+  const user = new User({
+    username: "super.admin",
+    password: "Valid!Password123",
+    name: "Super Admin",
+    role: "Super Admin",
+  });
+
+  await user.validate();
+  assert.equal(user.role, "Super Admin");
+});
+
+test("model validation rejects weak passwords and malformed emails", async () => {
+  await assert.rejects(
+    new User({ username: "weak.user", password: "password", name: "Weak User" }).validate(),
+    /Password must be at least 12 characters/i
+  );
+  await assert.rejects(
+    new User({ username: "bad.email", password: "Valid!Password123", name: "Bad Email", email: "invalid" }).validate(),
+    /valid email address/i
+  );
+});
+
 test("page access levels safely store dotted page keys and serialize for the client", async () => {
   const user = new User({
     username: "permissions.test",
-    password: "temporary-password",
+    password: "Valid!Password123",
     name: "Permissions Test",
     pageAccessConfigured: true,
     pageAccess: ["network_success.performance", "report_builder"],
@@ -26,7 +49,7 @@ test("page access levels safely store dotted page keys and serialize for the cli
 test("a persisted-style read-only Master Run Cuts permission cannot write", async () => {
   const user = new User({
     username: "readonly.run.cuts",
-    password: "temporary-password",
+    password: "Valid!Password123",
     name: "Read Only Run Cuts",
     role: "Manager",
     pageAccessConfigured: true,
@@ -41,20 +64,38 @@ test("a persisted-style read-only Master Run Cuts permission cannot write", asyn
 test("passwords and authentication data are excluded from queries and public user JSON", () => {
   const user = new User({
     username: "privacy.test",
-    password: "temporary-password",
+    password: "Valid!Password123",
     name: "Privacy Test",
   });
   const publicUser = user.toPublicJSON();
 
   assert.equal(User.schema.path("password").options.select, false);
+  assert.equal(User.schema.path("pinHash").options.select, false);
   assert.equal(Object.hasOwn(publicUser, "password"), false);
+  assert.equal(Object.hasOwn(publicUser, "pinHash"), false);
   assert.equal(Object.hasOwn(publicUser, "token"), false);
+});
+
+test("security PINs are stored as bcrypt hashes and can be compared", async () => {
+  const user = new User({
+    username: "pin.security",
+    password: "Valid!Password123",
+    name: "PIN Security",
+  });
+
+  await user.setPin("483920");
+
+  assert.notEqual(user.pinHash, "483920");
+  assert.match(user.pinHash, /^\$2[aby]\$/);
+  assert.ok(user.pinConfiguredAt instanceof Date);
+  assert.equal(await user.comparePin("483920"), true);
+  assert.equal(await user.comparePin("123456"), false);
 });
 
 test("session JSON includes permissions but omits user-directory contact fields", () => {
   const user = new User({
     username: "session.privacy",
-    password: "temporary-password",
+    password: "Valid!Password123",
     name: "Session Privacy",
     email: "private@example.com",
     phone: "555-0100",

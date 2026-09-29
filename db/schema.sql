@@ -17,6 +17,24 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[bigstar_write_lock] WHERE lock_name = 'globa
   INSERT INTO [dbo].[bigstar_write_lock] (lock_name, lock_version, updated_at)
   VALUES ('global', 0, SYSUTCDATETIME());
 
+  IF OBJECT_ID(N'[dbo].[api_access_tokens]', N'U') IS NULL
+  BEGIN
+    CREATE TABLE [dbo].[api_access_tokens] (
+      [name] varchar(max) NOT NULL,
+      [token_hash] varchar(max) NOT NULL,
+      [token_prefix] varchar(max) NOT NULL,
+      [user] varchar(128) NOT NULL,
+      [created_by] varchar(128) NOT NULL,
+      [expires_at] datetime2(6) NOT NULL,
+      [last_used_at] datetime2(6) NULL,
+      [revoked_at] datetime2(6) NULL,
+      [id] varchar(128) NOT NULL,
+      [created_at] datetime2(6) NOT NULL,
+      [updated_at] datetime2(6) NOT NULL,
+      [version] float NULL
+    );
+  END;
+
   IF OBJECT_ID(N'[dbo].[change_logs]', N'U') IS NULL
   BEGIN
     CREATE TABLE [dbo].[change_logs] (
@@ -950,6 +968,8 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[bigstar_write_lock] WHERE lock_name = 'globa
     CREATE TABLE [dbo].[users] (
       [username] varchar(max) NOT NULL,
       [password] varchar(max) NOT NULL,
+      [pin_hash] varchar(max) NULL,
+      [pin_configured_at] datetime2(6) NULL,
       [name] varchar(max) NOT NULL,
       [email] varchar(max) NULL,
       [phone] varchar(max) NOT NULL,
@@ -964,6 +984,24 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[bigstar_write_lock] WHERE lock_name = 'globa
       [version] float NULL
     );
   END;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = N'dbo'
+      AND TABLE_NAME = N'users'
+      AND COLUMN_NAME = N'pin_hash'
+  )
+    ALTER TABLE [dbo].[users] ADD [pin_hash] varchar(max) NULL;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = N'dbo'
+      AND TABLE_NAME = N'users'
+      AND COLUMN_NAME = N'pin_configured_at'
+  )
+    ALTER TABLE [dbo].[users] ADD [pin_configured_at] datetime2(6) NULL;
 
   IF OBJECT_ID(N'[dbo].[users_sections]', N'U') IS NULL
   BEGIN
@@ -1041,6 +1079,9 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[bigstar_write_lock] WHERE lock_name = 'globa
 
 IF OBJECT_ID(N'[dbo].[pk_bigstar_write_lock]', N'PK') IS NULL
   ALTER TABLE [dbo].[bigstar_write_lock] ADD CONSTRAINT [pk_bigstar_write_lock] PRIMARY KEY NONCLUSTERED ([lock_name]) NOT ENFORCED;
+
+IF OBJECT_ID(N'[dbo].[pk_api_access_tokens]', N'PK') IS NULL
+  ALTER TABLE [dbo].[api_access_tokens] ADD CONSTRAINT [pk_api_access_tokens] PRIMARY KEY NONCLUSTERED ([id]) NOT ENFORCED;
 
 IF OBJECT_ID(N'[dbo].[pk_change_logs]', N'PK') IS NULL
   ALTER TABLE [dbo].[change_logs] ADD CONSTRAINT [pk_change_logs] PRIMARY KEY NONCLUSTERED ([id]) NOT ENFORCED;

@@ -4,22 +4,30 @@ import {
   canAccessPageSection,
   canWritePage,
 } from "../utils/pageAccess.js";
+import { isGlobalAdmin, isSuperAdmin } from "../utils/roles.js";
 
 export const requireELT = (req, res, next) => {
-  if (req.user.role !== "ELT") {
-    return res.status(403).json({ message: "ELT access required" });
+  if (!isGlobalAdmin(req.user)) {
+    return res.status(403).json({ message: "ELT or Super Admin access required" });
+  }
+  next();
+};
+
+export const requireSuperAdmin = (req, res, next) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ message: "Super Admin access required" });
   }
   next();
 };
 
 export const canAccessDivision = (user, divisionId) => {
   if (!divisionId) return false;
-  if (user.role === "ELT") return true;
+  if (isGlobalAdmin(user)) return true;
   return user.divisionAccess.some((id) => id.toString() === divisionId.toString());
 };
 
 export const divisionFilter = (user) => {
-  if (user.role === "ELT") return {};
+  if (isGlobalAdmin(user)) return {};
   return { _id: { $in: user.divisionAccess } };
 };
 

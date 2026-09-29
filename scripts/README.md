@@ -29,4 +29,4 @@ npm run migrate:daily-issue-dedup
 npm run maintenance:create-admin
 ```
 
-Set `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_NAME` first. `ADMIN_ROLE` defaults to `ELT`.
+Set `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_NAME` first. `ADMIN_PASSWORD` must satisfy the application password policy, and `ADMIN_ROLE` defaults to `Super Admin`.

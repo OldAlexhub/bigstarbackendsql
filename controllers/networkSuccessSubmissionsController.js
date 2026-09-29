@@ -11,6 +11,7 @@ import NetworkSubmission from "../models/NetworkSubmission.js";
 import NetworkKpiEntry from "../models/NetworkKpiEntry.js";
 import NetworkRouteAlias from "../models/NetworkRouteAlias.js";
 import { canAccessDivision, divisionFilter } from "../middleware/access.js";
+import { isGlobalAdmin } from "../utils/roles.js";
 import { parseVisionReport } from "../utils/networkSuccess/parseVisionReport.js";
 import { parseEcolaneReports } from "../utils/networkSuccess/parseEcolaneReports.js";
 import { parseSpareReport } from "../utils/networkSuccess/parseSpareReport.js";
@@ -60,7 +61,7 @@ const submissionJson = (submission) => ({
 
 const ensureSubmissionAccess = (req, submission) => {
   if (!submission) return { status: 404, message: "Submission not found" };
-  if (req.user.role === "ELT") return null;
+  if (isGlobalAdmin(req.user)) return null;
   if (submission.division && canAccessDivision(req.user, submission.division)) return null;
   if (String(submission.createdBy) === String(req.user._id)) return null;
   return { status: 403, message: "No access to this submission" };
@@ -535,7 +536,7 @@ export const confirmSubmission = async (req, res) => {
 };
 
 export const listSubmissions = async (req, res) => {
-  const filter = req.user.role === "ELT"
+  const filter = isGlobalAdmin(req.user)
     ? {}
     : { $or: [{ division: { $in: req.user.divisionAccess } }, { createdBy: req.user._id }] };
   filter.status = { $ne: "removed" };

@@ -13,6 +13,7 @@ import {
   reportBuilderMetadata,
 } from "../utils/reportBuilder.js";
 import { drawPdfTable, pdfPageLeft } from "../utils/pdfTable.js";
+import { isGlobalAdmin } from "../utils/roles.js";
 
 const parseDivisionIds = (raw) => {
   if (!raw) return { ids: null };
@@ -42,7 +43,7 @@ const resolveRequest = (query) => {
 const accessibleDivisionDocs = async (req, selectedIds) => {
   const filter = { ...divisionFilter(req.user), active: true };
   if (selectedIds?.length) {
-    const ids = req.user.role === "ELT"
+    const ids = isGlobalAdmin(req.user)
       ? selectedIds
       : selectedIds.filter((divisionId) =>
         req.user.divisionAccess.some((allowedId) => String(allowedId) === String(divisionId))

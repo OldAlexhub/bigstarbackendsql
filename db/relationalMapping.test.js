@@ -34,6 +34,15 @@ test("primitive and subdocument arrays map to child tables", () => {
   );
 });
 
+test("user PIN columns are added when upgrading an existing Warehouse schema", () => {
+  const mapping = buildModelMapping(User);
+  const ddl = ddlForMapping(mapping);
+
+  assert.equal(mapping.columns.find((column) => column.path === "pinHash")?.addIfMissing, true);
+  assert.match(ddl, /ALTER TABLE \[dbo\]\.\[users\] ADD \[pin_hash\] varchar\(max\) NULL/);
+  assert.match(ddl, /ALTER TABLE \[dbo\]\.\[users\] ADD \[pin_configured_at\] datetime2\(6\) NULL/);
+});
+
 test("dynamic Mixed fields use typed relational value-node tables instead of JSON columns", () => {
   const mapping = buildModelMapping(NetworkKpiEntry);
   assert.ok(mapping.mixed.some((field) => field.path === "deployment.provenance"));

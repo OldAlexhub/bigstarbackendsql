@@ -23,6 +23,7 @@ import ReallocationRequest from "../models/ReallocationRequest.js";
 import PermanentOsrChange from "../models/PermanentOsrChange.js";
 import TeamPost from "../models/TeamPost.js";
 import { canAccessDivision, divisionFilter } from "../middleware/access.js";
+import { isGlobalAdmin } from "../utils/roles.js";
 import { ensureDefaultKpiSettings } from "../utils/operationsReporting.js";
 import { runInTransaction } from "../utils/transaction.js";
 import {
@@ -163,7 +164,7 @@ const applyThresholdChange = async (division, thresholds, userId) => {
 };
 
 export const listDivisions = async (req, res) => {
-  const includeInactive = req.query.includeInactive === "1" && req.user.role === "ELT";
+  const includeInactive = req.query.includeInactive === "1" && isGlobalAdmin(req.user);
   const divisions = await Division.find({
     ...divisionFilter(req.user),
     ...(includeInactive ? {} : { active: { $ne: false } }),
@@ -202,7 +203,7 @@ export const listDivisions = async (req, res) => {
 };
 
 export const listDivisionThresholds = async (req, res) => {
-  const filter = req.user.role === "ELT"
+  const filter = isGlobalAdmin(req.user)
     ? {}
     : { division: { $in: req.user.divisionAccess || [] } };
   const thresholds = await DivisionThresholdChange.find(filter)
@@ -260,16 +261,16 @@ export const updateDivision = async (req, res) => {
 
   const { name, active, thresholds, pulloutAddressRules } = req.body;
   if (name !== undefined) {
-    if (req.user.role !== "ELT") {
-      return res.status(403).json({ message: "ELT access is required to rename a division" });
+    if (!isGlobalAdmin(req.user)) {
+      return res.status(403).json({ message: "ELT or Super Admin access is required to rename a division" });
     }
     const trimmedName = String(name).trim();
     if (!trimmedName) return res.status(400).json({ message: "Division name is required" });
     division.name = trimmedName;
   }
   if (active !== undefined) {
-    if (req.user.role !== "ELT") {
-      return res.status(403).json({ message: "ELT access is required to retire or restore a division" });
+    if (!isGlobalAdmin(req.user)) {
+      return res.status(403).json({ message: "ELT or Super Admin access is required to retire or restore a division" });
     }
     division.active = Boolean(active);
   }
@@ -292,7 +293,7 @@ export const updateDivision = async (req, res) => {
       division.pulloutAddressRules.editableInLiveSchedule = Boolean(pulloutAddressRules.editableInLiveSchedule);
     }
   }
-  if (req.user.role === "ELT") {
+  if (isGlobalAdmin(req.user)) {
     const { code, type, parentDivision, timezone } = req.body;
     if (code !== undefined) division.code = code;
     if (type !== undefined) division.type = type;

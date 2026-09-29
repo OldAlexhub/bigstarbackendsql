@@ -1,3 +1,5 @@
+import { isGlobalAdmin } from "./roles.js";
+
 const score = (row) => row.avgFulfillmentPct ?? -1;
 
 export const rankLeaderboardRows = (rows) => {
@@ -6,7 +8,7 @@ export const rankLeaderboardRows = (rows) => {
 };
 
 export const filterLeaderboardRowsForUser = (ranked, user) => {
-  if (user?.role === "ELT") return ranked;
+  if (isGlobalAdmin(user)) return ranked;
   const accessibleIds = new Set(
     (user?.divisionAccess || []).map((division) => String(division?._id || division))
   );
