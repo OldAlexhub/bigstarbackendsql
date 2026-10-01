@@ -183,6 +183,36 @@ test("removing a confirmed submission permanently deletes its active entries and
   }
 });
 
+test("submission ownership does not bypass the assigned division boundary", async () => {
+  const originalFindSubmission = NetworkSubmission.findById;
+  const originalDeleteSubmission = NetworkSubmission.deleteOne;
+  const submission = {
+    _id: "submission-1",
+    status: "confirmed",
+    division: "division-2",
+    createdBy: "user-1",
+  };
+  let deleteCalled = false;
+  NetworkSubmission.findById = async () => submission;
+  NetworkSubmission.deleteOne = async () => { deleteCalled = true; };
+  try {
+    const res = response();
+    await removeSubmission(
+      {
+        user: { _id: "user-1", role: "Coordinator", divisionAccess: ["division-1"] },
+        params: { id: "submission-1" },
+      },
+      res
+    );
+    assert.equal(res.statusCode, 403);
+    assert.match(res.body.message, /division/);
+    assert.equal(deleteCalled, false);
+  } finally {
+    NetworkSubmission.findById = originalFindSubmission;
+    NetworkSubmission.deleteOne = originalDeleteSubmission;
+  }
+});
+
 test("opening a confirmed submission creates one editable revision and preserves the original", async () => {
   const originals = {
     findSubmission: NetworkSubmission.findById,

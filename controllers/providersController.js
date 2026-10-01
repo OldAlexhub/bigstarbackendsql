@@ -1,7 +1,25 @@
 import Provider from "../models/Provider.js";
+import Operator from "../models/Operator.js";
+import { canAccessDivision } from "../middleware/access.js";
+import { isGlobalAdmin } from "../utils/roles.js";
 
 export const listProviders = async (req, res) => {
-  const providers = await Provider.find().sort({ name: 1 });
+  const requestedDivision = req.query.division;
+  if (requestedDivision && !canAccessDivision(req.user, requestedDivision)) {
+    return res.status(403).json({ message: "No access to this division" });
+  }
+
+  let filter = {};
+  if (requestedDivision || !isGlobalAdmin(req.user)) {
+    const division = requestedDivision || { $in: req.user.divisionAccess };
+    const providerIds = await Operator.distinct("provider", {
+      division,
+      provider: { $ne: null },
+    });
+    filter = { _id: { $in: providerIds } };
+  }
+
+  const providers = await Provider.find(filter).sort({ name: 1 });
   res.json({ providers });
 };
 

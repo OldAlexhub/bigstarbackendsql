@@ -62,7 +62,11 @@ const submissionJson = (submission) => ({
 const ensureSubmissionAccess = (req, submission) => {
   if (!submission) return { status: 404, message: "Submission not found" };
   if (isGlobalAdmin(req.user)) return null;
-  if (submission.division && canAccessDivision(req.user, submission.division)) return null;
+  if (submission.division) {
+    return canAccessDivision(req.user, submission.division)
+      ? null
+      : { status: 403, message: "No access to this submission's division" };
+  }
   if (String(submission.createdBy) === String(req.user._id)) return null;
   return { status: 403, message: "No access to this submission" };
 };
@@ -538,7 +542,12 @@ export const confirmSubmission = async (req, res) => {
 export const listSubmissions = async (req, res) => {
   const filter = isGlobalAdmin(req.user)
     ? {}
-    : { $or: [{ division: { $in: req.user.divisionAccess } }, { createdBy: req.user._id }] };
+    : {
+      $or: [
+        { division: { $in: req.user.divisionAccess } },
+        { division: null, createdBy: req.user._id },
+      ],
+    };
   filter.status = { $ne: "removed" };
   if (req.query.division) {
     if (!canAccessDivision(req.user, req.query.division)) return res.status(403).json({ message: "No access to this division" });
