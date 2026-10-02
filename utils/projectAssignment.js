@@ -65,8 +65,7 @@ export const projectAssignment = async (
 
   if (dropDates.length) {
     const removable = await RunCutDay.find({
-      division: runCut.division,
-      route: runCut.route,
+      runCut: runCut._id,
       date: { $in: dropDates },
       isExtra: { $ne: true },
     }).select("_id");
@@ -90,8 +89,7 @@ export const projectAssignment = async (
   if (overrideFields.length) {
     await RunCutDay.updateMany(
       {
-        division: runCut.division,
-        route: runCut.route,
+        runCut: runCut._id,
         date: { $in: keepDates },
         isExtra: { $ne: true },
       },
@@ -109,12 +107,13 @@ export const projectAssignment = async (
       });
       return {
         updateOne: {
-          filter: { division: runCut.division, route: runCut.route, date },
+          filter: { runCut: runCut._id, date },
           update: [
             {
               $set: {
                 division: { $ifNull: ["$division", runCut.division] },
                 route: { $ifNull: ["$route", runCut.route] },
+                runCut: { $ifNull: ["$runCut", runCut._id] },
                 date: { $ifNull: ["$date", date] },
                 operator: { $cond: ["$overrides.operator", "$operator", runCut.operator] },
                 vehicle: { $cond: ["$overrides.vehicle", "$vehicle", runCut.vehicle] },
@@ -152,8 +151,7 @@ export const projectAssignment = async (
   );
 
   const runCutDays = await RunCutDay.find({
-    division: runCut.division,
-    route: runCut.route,
+    runCut: runCut._id,
     date: { $in: keepDates },
   });
   await syncAutoIssuesBulk(runCutDays, userId);

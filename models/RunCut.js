@@ -79,7 +79,9 @@ const runCutSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-runCutSchema.index({ division: 1, route: 1 }, { unique: true });
+// A canonical route can have more than one non-overlapping assignment.
+// Route remains the single reporting identity; each RunCut is one schedule.
+runCutSchema.index({ division: 1, route: 1 });
 runCutSchema.index({ operator: 1 });
 runCutSchema.index({ vehicle: 1 });
 
