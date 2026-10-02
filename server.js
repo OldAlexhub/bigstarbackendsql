@@ -19,7 +19,6 @@ import RetentionCleanupLog from "./models/RetentionCleanupLog.js";
 import Operator from "./models/Operator.js";
 import Vehicle from "./models/Vehicle.js";
 import RunCut from "./models/RunCut.js";
-import { migrateSplitRouteAssignments } from "./utils/migrateSplitRouteAssignments.js";
 import ApiAccessToken from "./models/ApiAccessToken.js";
 import authRoutes from "./routes/authRoutes.js";
 import apiAccessTokensRoutes from "./routes/apiAccessTokensRoutes.js";
@@ -165,18 +164,6 @@ const start = async () => {
   if (rosterBackfill.updatedOperators || rosterBackfill.rewiredAssignments) {
     console.log(
       `Assignment rosters updated: ${rosterBackfill.updatedOperators} operator records, ${rosterBackfill.rewiredAssignments} assignments.`
-    );
-  }
-  const splitAssignmentMigration = await migrateSplitRouteAssignments();
-  if (
-    splitAssignmentMigration.backfilledDays ||
-    splitAssignmentMigration.backfilledCoverage ||
-    splitAssignmentMigration.droppedIndexes.length
-  ) {
-    console.log(
-      `Split route assignments prepared: ${splitAssignmentMigration.backfilledDays} dated duties, ` +
-      `${splitAssignmentMigration.backfilledCoverage} standby links, ` +
-      `${splitAssignmentMigration.droppedIndexes.length} legacy indexes removed.`
     );
   }
   await Operator.createIndexes();

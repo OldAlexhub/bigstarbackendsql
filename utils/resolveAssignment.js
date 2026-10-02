@@ -179,30 +179,6 @@ export const findOperatorConflict = async ({ operator, daysOfWeek, startTime, en
   return null;
 };
 
-export const findRouteScheduleConflict = async ({ route, daysOfWeek, startTime, endTime, status = "active", excludeRunCutId, excludeRunCutIds = [] }) => {
-  if (!isOperatingAssignmentStatus(status) || !route || !daysOfWeek?.length || !startTime || !endTime) return null;
-  const excludedIds = [...excludeRunCutIds, ...(excludeRunCutId ? [excludeRunCutId] : [])];
-  const candidates = await RunCut.find({
-    route,
-    status: { $nin: NON_OPERATING_RUN_CUT_STATUSES },
-    ...(excludedIds.length && { _id: { $nin: excludedIds } }),
-  });
-  for (const candidate of candidates) {
-    const overlapDays = recurringOverlapDays(
-      daysOfWeek,
-      startTime,
-      endTime,
-      candidate.daysOfWeek,
-      candidate.startTime,
-      candidate.endTime
-    );
-    if (overlapDays.length) {
-      return { days: overlapDays, startTime: candidate.startTime, endTime: candidate.endTime };
-    }
-  }
-  return null;
-};
-
 // Same idea as findOperatorConflict, but for a single date rather than a
 // recurring weekly pattern — used when Deployment adds a one-off extra duty.
 // Checking every other RunCutDay this operator has on this exact date

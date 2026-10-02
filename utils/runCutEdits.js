@@ -6,7 +6,6 @@ import { computeHours } from "./hours.js";
 import { projectAssignment } from "./projectAssignment.js";
 import {
   findOperatorConflict,
-  findRouteScheduleConflict,
   findVehicleConflict,
   resolveOperator,
   resolveVehicle,
@@ -35,10 +34,6 @@ const conflictMessage = (conflict) =>
 const vehicleConflictMessage = (conflict) =>
   `This vehicle is already assigned to route ${conflict.routeCode} on ${conflict.days.join(", ")} ` +
   `from ${conflict.startTime} to ${conflict.endTime}; that overlaps with this assignment.`;
-
-const routeScheduleConflictMessage = (conflict) =>
-  `This route already has an assignment on ${conflict.days.join(", ")} from ` +
-  `${conflict.startTime} to ${conflict.endTime}. Use different days or non-overlapping times.`;
 
 export const normalizeRunCutEdit = async (runCut, rawBody) => {
   const body = { ...rawBody };
@@ -93,7 +88,6 @@ export const runCutPreview = (runCut, body) => {
   const preview = {
     _id: runCut._id,
     division: runCut.division,
-    route: runCut.route,
     daysOfWeek: [...(runCut.daysOfWeek || [])],
     operator: runCut.operator,
     vehicle: runCut.vehicle,
@@ -111,18 +105,7 @@ export const runCutPreview = (runCut, body) => {
   return preview;
 };
 
-export const validateRunCutAssignment = async (runCut, { excludeRunCutIds = [] } = {}) => {
-  const routeConflict = await findRouteScheduleConflict({
-    route: runCut.route,
-    daysOfWeek: runCut.daysOfWeek,
-    startTime: runCut.startTime,
-    endTime: runCut.endTime,
-    status: runCut.status,
-    excludeRunCutId: runCut._id,
-    excludeRunCutIds,
-  });
-  if (routeConflict) throw httpError(409, routeScheduleConflictMessage(routeConflict));
-
+export const validateRunCutAssignment = async (runCut) => {
   const conflict = await findOperatorConflict({
     operator: runCut.operator,
     daysOfWeek: runCut.daysOfWeek,
@@ -130,7 +113,6 @@ export const validateRunCutAssignment = async (runCut, { excludeRunCutIds = [] }
     endTime: runCut.endTime,
     status: runCut.status,
     excludeRunCutId: runCut._id,
-    excludeRunCutIds,
   });
   if (conflict) throw httpError(409, conflictMessage(conflict));
 
@@ -141,19 +123,18 @@ export const validateRunCutAssignment = async (runCut, { excludeRunCutIds = [] }
     endTime: runCut.endTime,
     status: runCut.status,
     excludeRunCutId: runCut._id,
-    excludeRunCutIds,
   });
   if (vehicleConflict) throw httpError(409, vehicleConflictMessage(vehicleConflict));
 };
 
 // Shared by direct Master Run Cut edits, same-day Permanent OSRs, and the
 // scheduler that activates future Permanent OSRs on their effective date.
-export const applyRunCutEdit = async (runCut, rawBody, userId, { replaceDayOverrides = false, excludeConflictRunCutIds = [] } = {}) => {
+export const applyRunCutEdit = async (runCut, rawBody, userId, { replaceDayOverrides = false } = {}) => {
   const { body, operatorDoc, vehicleDoc } = await normalizeRunCutEdit(runCut, rawBody);
   const changes = diffRunCutEdit(runCut, body);
   for (const change of changes) runCut[change.field] = change.newValue;
 
-  await validateRunCutAssignment(runCut, { excludeRunCutIds: excludeConflictRunCutIds });
+  await validateRunCutAssignment(runCut);
 
   const divisionDoc = await Division.findById(runCut.division);
   const thresholds = await getEffectiveThresholds(divisionDoc, todayInTimezone(divisionDoc.timezone));
